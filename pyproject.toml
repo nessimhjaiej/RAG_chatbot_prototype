@@ -1,0 +1,15 @@
+[project]
+name = "prototype"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "chromadb>=1.4.0",
+    "docx2txt>=0.9",
+    "google-genai>=1.0.0",
+    "langchain>=1.2.0",
+    "pypdf>=6.5.0",
+    "python-dotenv>=1.2.1",
+    "streamlit>=1.52.2",
+]
