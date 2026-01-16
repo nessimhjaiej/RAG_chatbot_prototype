@@ -22,6 +22,31 @@ if str(ROOT) not in sys.path:
 from app import rag_chain
 
 
+def _require_auth() -> bool:
+    """Gate access when APP_PASSWORD is configured."""
+    app_password = os.getenv("APP_PASSWORD")
+    if not app_password:
+        return True
+
+    if st.session_state.get("auth_ok"):
+        with st.sidebar:
+            st.caption("Authenticated")
+            if st.button("Log out"):
+                st.session_state["auth_ok"] = False
+        return True
+
+    st.info("Authentication required.")
+    with st.form("login", clear_on_submit=True):
+        entered = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Sign in")
+        if submitted:
+            if entered == app_password:
+                st.session_state["auth_ok"] = True
+                return True
+            st.error("Invalid password.")
+    return False
+
+
 def _render_contexts(contexts: List[Mapping]) -> None:
     """Show retrieved passages with metadata and distance."""
     if not contexts:
@@ -52,6 +77,9 @@ def main() -> None:
         "Ask a question about ICC policy documents. Answers are grounded in "
         "retrieved passages from the Chroma vector store."
     )
+
+    if not _require_auth():
+        return
 
     if not os.getenv("GEMINI_API_KEY"):
         st.warning("GEMINI_API_KEY is not set; responses will fail until configured.")
