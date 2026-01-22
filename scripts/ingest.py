@@ -29,7 +29,9 @@ from app.vectorstore import (
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Ingest ICC text into Chroma with Gemini embeddings.")
+    parser = argparse.ArgumentParser(
+        description="Ingest ICC text into Chroma with Gemini embeddings."
+    )
     parser.add_argument(
         "--input",
         type=Path,
@@ -80,8 +82,10 @@ def ingest_file(
         raise FileNotFoundError(f"Input file not found: {input_path}")
 
     text = input_path.read_text(encoding="utf-8")
-    chunks: List[str] = chunk_text(text, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    ids = [f"{collection_name}-chunk-{i+1}" for i in range(len(chunks))]
+    chunks: List[str] = chunk_text(
+        text, chunk_size=chunk_size, chunk_overlap=chunk_overlap
+    )
+    ids = [f"{collection_name}-chunk-{i + 1}" for i in range(len(chunks))]
     metadatas = [
         {"source": input_path.name, "chunk_index": i + 1, "total_chunks": len(chunks)}
         for i in range(len(chunks))
@@ -98,7 +102,9 @@ def ingest_file(
     collection = get_collection(client, name=collection_name)
     add_documents(collection, ids=ids, documents=chunks, metadatas=metadatas)
 
-    print(f"Ingested {len(chunks)} chunks into collection '{collection_name}' at {persist_dir}")
+    print(
+        f"Ingested {len(chunks)} chunks into collection '{collection_name}' at {persist_dir}"
+    )
 
 
 def main() -> None:

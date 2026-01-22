@@ -92,7 +92,9 @@ def query_collection(
 
     include may contain any of: ["documents", "distances", "metadatas", "embeddings"].
     """
-    include_parts: List[str] = list(include) if include else ["documents", "metadatas", "distances"]
+    include_parts: List[str] = (
+        list(include) if include else ["documents", "metadatas", "distances"]
+    )
     return collection.query(
         query_texts=[query_text],
         n_results=n_results,

@@ -15,9 +15,7 @@ from pathlib import Path
 from typing import Iterable, List
 
 
-def chunk_text(
-    text: str, chunk_size: int = 800, chunk_overlap: int = 120
-) -> List[str]:
+def chunk_text(text: str, chunk_size: int = 800, chunk_overlap: int = 120) -> List[str]:
     """
     Split text into overlapping chunks for retrieval.
 
@@ -99,7 +97,9 @@ def main() -> None:
         )
 
     text = input_path.read_text(encoding="utf-8")
-    chunks = chunk_text(text, chunk_size=args.chunk_size, chunk_overlap=args.chunk_overlap)
+    chunks = chunk_text(
+        text, chunk_size=args.chunk_size, chunk_overlap=args.chunk_overlap
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     write_chunks(chunks, args.output)
     print(

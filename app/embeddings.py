@@ -34,7 +34,9 @@ def _resolve_api_key(explicit_key: str | None = None) -> str:
     """Return a Gemini API key or fail fast with a helpful message."""
     api_key = explicit_key or os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise RuntimeError("Gemini API key not found. Set GEMINI_API_KEY in your environment.")
+        raise RuntimeError(
+            "Gemini API key not found. Set GEMINI_API_KEY in your environment."
+        )
     return api_key
 
 

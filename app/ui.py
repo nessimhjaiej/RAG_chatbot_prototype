@@ -11,6 +11,7 @@ import os
 import sys
 from pathlib import Path
 from typing import List, Mapping
+import logging
 
 import streamlit as st
 
@@ -20,30 +21,125 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app import rag_chain
+from app.vectorstore import DEFAULT_PERSIST_DIR, DEFAULT_COLLECTION_NAME, get_client
+from app.auth import authenticate_user
+
+
+# Basic console logging for health checks
+logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
+
+
+def _collection_count_safe(collection) -> int | None:
+    """Return count of items in a Chroma collection without triggering embeddings.
+
+    Tries `collection.count()` first and falls back to `len(collection.get()["ids"])`.
+    Returns None if both methods fail.
+    """
+    try:
+        return int(collection.count())
+    except Exception:
+        try:
+            data = collection.get()
+            ids = data.get("ids", []) or []
+            return len(ids)
+        except Exception:
+            return None
+
+
+def _health_check() -> List[str]:
+    """Run connectivity checks and log results to the console.
+
+    Returns list of human-readable status lines to render in the UI.
+    """
+    statuses: List[str] = []
+
+    # Check GEMINI API key presence (not network reachability)
+    gemini_key_present = bool(os.getenv("GEMINI_API_KEY"))
+    gemini_status = (
+        "Gemini API key: present" if gemini_key_present else "Gemini API key: MISSING"
+    )
+    logging.info(gemini_status)
+    statuses.append(gemini_status)
+
+    # Check Chroma persistence directory and sqlite file existence
+    persist_path = Path(DEFAULT_PERSIST_DIR)
+    sqlite_path = persist_path / "chroma.sqlite3"
+    chroma_dir_ok = persist_path.exists()
+    chroma_db_ok = sqlite_path.exists()
+    chroma_dir_status = (
+        f"Chroma dir '{persist_path}': {'exists' if chroma_dir_ok else 'missing'}"
+    )
+    chroma_db_status = (
+        f"Chroma DB '{sqlite_path.name}': {'exists' if chroma_db_ok else 'missing'}"
+    )
+    logging.info(chroma_dir_status)
+    logging.info(chroma_db_status)
+    statuses.extend([chroma_dir_status, chroma_db_status])
+
+    # Try to open Chroma client and collection; avoid embedding initialization when missing key
+    try:
+        client = get_client(persist_dir=persist_path)
+        logging.info("Chroma client: initialized")
+        statuses.append("Chroma client: initialized")
+        try:
+            # Retrieve collection without forcing a query; embedding fn is set in vectorstore
+            from app.vectorstore import get_collection  # local import to avoid cycles
+
+            if gemini_key_present:
+                collection = get_collection(client, name=DEFAULT_COLLECTION_NAME)
+                count = _collection_count_safe(collection)
+                count_txt = f"{count}" if count is not None else "unknown"
+                col_status = (
+                    f"Collection '{DEFAULT_COLLECTION_NAME}': ready (count={count_txt})"
+                )
+                logging.info(col_status)
+                statuses.append(col_status)
+            else:
+                statuses.append(
+                    f"Collection '{DEFAULT_COLLECTION_NAME}': skipped (embedding key missing)"
+                )
+                logging.info(
+                    "Collection check skipped because GEMINI_API_KEY is missing"
+                )
+        except Exception as exc:
+            err = f"Chroma collection error: {exc}"
+            logging.error(err)
+            statuses.append(err)
+    except Exception as exc:
+        err = f"Chroma client error: {exc}"
+        logging.error(err)
+        statuses.append(err)
+
+    return statuses
 
 
 def _require_auth() -> bool:
-    """Gate access when APP_PASSWORD is configured."""
-    app_password = os.getenv("APP_PASSWORD")
-    if not app_password:
-        return True
-
-    if st.session_state.get("auth_ok"):
+    """Authenticate user against database and store role in session."""
+    if st.session_state.get("user"):
         with st.sidebar:
-            st.caption("Authenticated")
+            user = st.session_state["user"]
+            st.caption(f"Signed in as: {user['username']} ({user['role']})")
             if st.button("Log out"):
-                st.session_state["auth_ok"] = False
+                for key in ("user", "mode"):
+                    st.session_state.pop(key, None)
         return True
 
-    st.info("Authentication required.")
-    with st.form("login", clear_on_submit=True):
-        entered = st.text_input("Password", type="password")
+    st.info("Please sign in to continue.")
+    with st.form("login", clear_on_submit=False):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
         submitted = st.form_submit_button("Sign in")
         if submitted:
-            if entered == app_password:
-                st.session_state["auth_ok"] = True
-                return True
-            st.error("Invalid password.")
+            try:
+                user = authenticate_user(username.strip(), password)
+                if user:
+                    st.session_state["user"] = user
+                    # Default mode per role
+                    st.session_state["mode"] = "Chat Mode"
+                    return True
+                st.error("Invalid credentials.")
+            except Exception as exc:
+                st.error(f"Authentication error: {exc}")
     return False
 
 
@@ -78,13 +174,35 @@ def main() -> None:
         "retrieved passages from the Chroma vector store."
     )
 
+    # Health status in sidebar + console logs
+    with st.sidebar:
+        st.subheader("System Status")
+        for line in _health_check():
+            if "MISSING" in line or "error" in line.lower():
+                st.error(line)
+            else:
+                st.success(line)
+
+        # Mode selector for admin users
+        user = st.session_state.get("user")
+        if user and user.get("role") == "admin":
+            st.divider()
+            st.subheader("Admin Controls")
+            st.session_state["mode"] = st.selectbox(
+                "Mode",
+                options=["Chat Mode", "Action Mode"],
+                index=0 if st.session_state.get("mode") != "Action Mode" else 1,
+            )
+
     if not _require_auth():
         return
 
     if not os.getenv("GEMINI_API_KEY"):
         st.warning("GEMINI_API_KEY is not set; responses will fail until configured.")
 
-    question = st.text_area("Your question", height=120, placeholder="What are the ICC membership criteria?")
+    question = st.text_area(
+        "Your question", height=120, placeholder="What are the ICC membership criteria?"
+    )
     top_k = st.slider("Passages to retrieve", min_value=1, max_value=10, value=5)
 
     if st.button("Get answer", type="primary"):
@@ -94,7 +212,18 @@ def main() -> None:
 
         with st.spinner("Retrieving passages and generating answer..."):
             try:
+                # Behavior differs by mode for admin; regular users are always chat mode
+                mode = st.session_state.get("mode", "Chat Mode")
                 answer, contexts = rag_chain.answer_question(question, top_k=top_k)
+                if (
+                    mode == "Action Mode"
+                    and (st.session_state.get("user") or {}).get("role") == "admin"
+                ):
+                    # Placeholder: execute predefined actions/workflows permitted for admin.
+                    # Integrate with your system actions here.
+                    st.info(
+                        "Action Mode: Executed applicable admin workflows (placeholder)."
+                    )
             except Exception as exc:  # pragma: no cover - UI error surface
                 st.error(f"Failed to generate answer: {exc}")
                 return

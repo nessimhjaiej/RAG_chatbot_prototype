@@ -118,7 +118,9 @@ def fetch_users(cursor: pyodbc.Cursor) -> Iterable[Tuple[int, str, Optional[str]
 def update_password(cursor: pyodbc.Cursor, user_id: int, new_hash: str) -> None:
     """Update a user's password hash safely."""
     # Parameterized query prevents SQL injection.
-    cursor.execute("UPDATE dbo.Users SET PasswordHash = ? WHERE Id = ?", new_hash, user_id)
+    cursor.execute(
+        "UPDATE dbo.Users SET PasswordHash = ? WHERE Id = ?", new_hash, user_id
+    )
 
 
 def fix_plaintext_passwords() -> int:
