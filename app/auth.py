@@ -3,12 +3,10 @@ Application authentication utilities.
 
 Provides database-backed user authentication and role fetching for Streamlit UI.
 
-Environment variables (same as scripts/fix_passwords.py):
-  MSSQL_SERVER, MSSQL_DATABASE
-Optional:
-  MSSQL_DRIVER (default: "ODBC Driver 18 for SQL Server")
-  MSSQL_UID, MSSQL_PWD (for SQL authentication)
-  MSSQL_ENCRYPT (default: "yes"), MSSQL_TRUST_CERT (default: "yes")
+Environment variables:
+    MONGODB_URI
+    MONGODB_DB (default: "rag_prototype")
+    MONGODB_USERS_COLLECTION (default: "users")
 """
 
 from __future__ import annotations
@@ -17,8 +15,9 @@ import os
 import logging
 from typing import Optional, Dict
 
-import pyodbc
-from passlib.hash import bcrypt as passlib_bcrypt
+import bcrypt
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
 from dotenv import load_dotenv
 
 # Load .env from repo root to ease local dev
@@ -26,76 +25,70 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv(os.path.join(_ROOT, ".env"))
 
 
-def build_connection_string() -> str:
-    """Build a SQL Server connection string using SQL or Windows auth."""
-    server = os.getenv("MSSQL_SERVER")
-    database = os.getenv("MSSQL_DATABASE")
-    driver = os.getenv("MSSQL_DRIVER", "ODBC Driver 18 for SQL Server")
-    uid = os.getenv("MSSQL_UID")
-    pwd = os.getenv("MSSQL_PWD")
-    encrypt = os.getenv("MSSQL_ENCRYPT", "yes")
-    trust_cert = os.getenv("MSSQL_TRUST_CERT", "yes")
-
-    if not server or not database:
-        raise ValueError("MSSQL_SERVER and MSSQL_DATABASE must be set.")
-
-    if uid and pwd:
-        return (
-            f"DRIVER={{{driver}}};SERVER={server};DATABASE={database};"
-            f"UID={uid};PWD={pwd};Encrypt={encrypt};TrustServerCertificate={trust_cert};"
-        )
-
-    return (
-        f"DRIVER={{{driver}}};SERVER={server};DATABASE={database};"
-        f"Trusted_Connection=yes;Encrypt={encrypt};TrustServerCertificate={trust_cert};"
-    )
+def _mongo_uri() -> str:
+    uri = os.getenv("MONGODB_URI")
+    if not uri:
+        raise ValueError("MONGODB_URI must be set.")
+    return uri
 
 
-def get_connection() -> pyodbc.Connection:
-    """Open a database connection with explicit transaction control."""
-    conn_str = build_connection_string()
-    return pyodbc.connect(conn_str, autocommit=True)
+def _mongo_db_name() -> str:
+    return os.getenv("MONGODB_DB", "rag_prototype")
+
+
+def _mongo_users_collection() -> str:
+    return os.getenv("MONGODB_USERS_COLLECTION", "users")
+
+
+def get_mongo_client() -> MongoClient:
+    """Create a MongoDB client with a short server selection timeout."""
+    return MongoClient(_mongo_uri(), serverSelectionTimeoutMS=3000)
+
+
+def get_users_collection():
+    client = get_mongo_client()
+    return client[_mongo_db_name()][_mongo_users_collection()]
+
+
+def ping_mongo() -> None:
+    """Raise on MongoDB connectivity issues."""
+    client = get_mongo_client()
+    client.admin.command("ping")
 
 
 def fetch_user(username: str) -> Optional[Dict]:
-    """Fetch a user record by username.
+    """Fetch a user record by username from MongoDB.
 
-    Expects table dbo.Users with columns: Id, Username, PasswordHash, Role (optional).
-    Returns dict or None if not found.
+    Expects collection documents with fields:
+      - username
+      - password_hash (or passwordHash)
+      - role (optional)
     """
-    conn = get_connection()
     try:
-        cursor = conn.cursor()
-        # Parameterized query prevents SQL injection.
-        cursor.execute(
-            "SELECT Id, Username, PasswordHash, Role FROM dbo.Users WHERE Username = ?",
-            username,
-        )
-        row = cursor.fetchone()
-        if not row:
+        collection = get_users_collection()
+        doc = collection.find_one({"username": username})
+        if not doc:
             return None
-        # pyodbc returns a Row; index by position
-        # Fall back if Role column is missing
-        try:
-            role = row[3]
-        except Exception:
-            role = None
+        role = doc.get("role")
+        password_hash = doc.get("password_hash") or doc.get("passwordHash")
+        user_id = doc.get("id") or str(doc.get("_id"))
         return {
-            "id": row[0],
-            "username": row[1],
-            "password_hash": row[2],
+            "id": user_id,
+            "username": doc.get("username"),
+            "password_hash": password_hash,
             "role": (str(role).lower() if role else None),
         }
-    finally:
-        conn.close()
+    except PyMongoError as exc:
+        logging.error("MongoDB error while fetching user: %s", exc)
+        return None
 
 
 def verify_password(plaintext: str, stored_hash: Optional[str]) -> bool:
-    """Verify a password against a bcrypt hash using passlib."""
+    """Verify a password against a bcrypt hash using native bcrypt."""
     if not stored_hash:
         return False
     try:
-        return passlib_bcrypt.verify(plaintext, stored_hash)
+        return bcrypt.checkpw(plaintext.encode("utf-8"), stored_hash.encode("utf-8"))
     except Exception:
         return False
 

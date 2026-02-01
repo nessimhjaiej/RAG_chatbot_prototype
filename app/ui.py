@@ -22,7 +22,7 @@ if str(ROOT) not in sys.path:
 
 from app import rag_chain
 from app.vectorstore import DEFAULT_PERSIST_DIR, DEFAULT_COLLECTION_NAME, get_client
-from app.auth import authenticate_user, get_connection
+from app.auth import authenticate_user, ping_mongo
 
 
 # Basic console logging for health checks
@@ -53,17 +53,16 @@ def _health_check() -> List[str]:
     """
     statuses: List[str] = []
 
-    # Check SQL Server connection
+    # Check MongoDB connection
     try:
-        conn = get_connection()
-        conn.close()
-        sql_status = "SQL Server: connected"
-        logging.info(sql_status)
-        statuses.append(sql_status)
+        ping_mongo()
+        mongo_status = "MongoDB: connected"
+        logging.info(mongo_status)
+        statuses.append(mongo_status)
     except Exception as exc:
-        sql_status = f"SQL Server: disconnected ({str(exc)[:50]}...)"
-        logging.error(sql_status)
-        statuses.append(sql_status)
+        mongo_status = f"MongoDB: disconnected ({str(exc)[:50]}...)"
+        logging.error(mongo_status)
+        statuses.append(mongo_status)
 
     # Check GEMINI API key presence (not network reachability)
     gemini_key_present = bool(os.getenv("GEMINI_API_KEY"))
@@ -126,12 +125,12 @@ def _health_check() -> List[str]:
 
 
 def _require_auth() -> bool:
-    """Authenticate user with button-based login (admin or user)."""
+    """Authenticate user against MongoDB and store role in session."""
     if st.session_state.get("user"):
         with st.sidebar:
             user = st.session_state["user"]
             st.caption(f"Signed in as: {user['username']} ({user['role']})")
-            
+
             if st.button("Log out"):
                 for key in ("user", "mode"):
                     st.session_state.pop(key, None)
@@ -139,28 +138,22 @@ def _require_auth() -> bool:
         return True
 
     st.info("Please sign in to continue.")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("Login as Admin", type="primary", use_container_width=True):
-            st.session_state["user"] = {
-                "id": 1,
-                "username": "admin",
-                "role": "admin"
-            }
-            st.session_state["mode"] = "AI Chat"
-            st.rerun()
-    
-    with col2:
-        if st.button("Login as User", use_container_width=True):
-            st.session_state["user"] = {
-                "id": 2,
-                "username": "user",
-                "role": "user"
-            }
-            st.session_state["mode"] = "AI Chat"
-            st.rerun()
-    
+    with st.form("login", clear_on_submit=False):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Sign in")
+        if submitted:
+            try:
+                user = authenticate_user(username.strip(), password)
+                if user:
+                    st.session_state["user"] = user
+                    # Default mode per role
+                    st.session_state["mode"] = "AI Chat"
+                    st.rerun()
+                else:
+                    st.error("Invalid credentials.")
+            except Exception as exc:
+                st.error(f"Authentication error: {exc}")
     return False
 
 

@@ -2,12 +2,11 @@
 One-time migration to replace plain-text passwords with bcrypt hashes.
 
 Requirements:
-  - Environment variables:
-      MSSQL_SERVER, MSSQL_DATABASE
-    Optional:
-      MSSQL_DRIVER (default: "ODBC Driver 18 for SQL Server")
-      MSSQL_UID, MSSQL_PWD (for SQL authentication)
-      MSSQL_ENCRYPT (default: "yes"), MSSQL_TRUST_CERT (default: "yes")
+    - Environment variables:
+            MONGODB_URI
+        Optional:
+            MONGODB_DB (default: "rag_prototype")
+            MONGODB_USERS_COLLECTION (default: "users")
 """
 
 from __future__ import annotations
@@ -19,7 +18,8 @@ import sys
 from typing import Iterable, Optional, Tuple, Union
 
 import bcrypt
-import pyodbc
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
 from dotenv import load_dotenv
 
 
@@ -31,33 +31,24 @@ load_dotenv(os.path.join(_ROOT, ".env"))
 _BCRYPT_RE = re.compile(r"^\$2[abxy]?\$\d{2}\$[./A-Za-z0-9]{53}$")
 
 
-def build_connection_string() -> str:
-    """Build a SQL Server connection string using SQL or Windows auth."""
-    server = os.getenv("MSSQL_SERVER")
-    database = os.getenv("MSSQL_DATABASE")
-    driver = os.getenv("MSSQL_DRIVER", "ODBC Driver 18 for SQL Server")
-    uid = os.getenv("MSSQL_UID")
-    pwd = os.getenv("MSSQL_PWD")
-    encrypt = os.getenv("MSSQL_ENCRYPT", "yes")
-    trust_cert = os.getenv("MSSQL_TRUST_CERT", "yes")
-
-    if not server or not database:
-        raise ValueError("MSSQL_SERVER and MSSQL_DATABASE must be set.")
-
-    if uid and pwd:
-        return (
-            f"DRIVER={{{driver}}};SERVER={server};DATABASE={database};"
-            f"UID={uid};PWD={pwd};Encrypt={encrypt};TrustServerCertificate={trust_cert};"
-        )
-
-    # Fall back to Windows auth when no SQL credentials are provided.
-    return f"DRIVER={{{driver}}};SERVER={server};DATABASE={database};Trusted_Connection=yes;"
+def _mongo_uri() -> str:
+    uri = os.getenv("MONGODB_URI")
+    if not uri:
+        raise ValueError("MONGODB_URI must be set.")
+    return uri
 
 
-def get_connection() -> pyodbc.Connection:
-    """Open a database connection with explicit transaction control."""
-    conn_str = build_connection_string()
-    return pyodbc.connect(conn_str, autocommit=False)
+def _mongo_db_name() -> str:
+    return os.getenv("MONGODB_DB", "rag_prototype")
+
+
+def _mongo_users_collection() -> str:
+    return os.getenv("MONGODB_USERS_COLLECTION", "users")
+
+
+def get_users_collection():
+    client = MongoClient(_mongo_uri(), serverSelectionTimeoutMS=3000)
+    return client[_mongo_db_name()][_mongo_users_collection()]
 
 
 def is_bcrypt_hash(value: Optional[Union[str, bytes, memoryview]]) -> bool:
@@ -108,29 +99,26 @@ def _bcrypt_input(plaintext: Union[str, bytes, memoryview]) -> bytes:
     return pwd_bytes[:72]
 
 
-def fetch_users(cursor: pyodbc.Cursor) -> Iterable[Tuple[int, str, Optional[str]]]:
+def fetch_users() -> Iterable[Tuple[object, str, Optional[str]]]:
     """Yield user records for migration."""
-    # Parameterless query; no user input is injected.
-    cursor.execute("SELECT Id, Username, PasswordHash FROM dbo.Users")
-    return cursor.fetchall()
+    collection = get_users_collection()
+    cursor = collection.find({}, {"username": 1, "password_hash": 1, "passwordHash": 1})
+    for doc in cursor:
+        stored_hash = doc.get("password_hash") or doc.get("passwordHash")
+        yield doc.get("_id"), doc.get("username"), stored_hash
 
 
-def update_password(cursor: pyodbc.Cursor, user_id: int, new_hash: str) -> None:
+def update_password(user_id: object, new_hash: str) -> None:
     """Update a user's password hash safely."""
-    # Parameterized query prevents SQL injection.
-    cursor.execute(
-        "UPDATE dbo.Users SET PasswordHash = ? WHERE Id = ?", new_hash, user_id
-    )
+    collection = get_users_collection()
+    collection.update_one({"_id": user_id}, {"$set": {"password_hash": new_hash}})
 
 
 def fix_plaintext_passwords() -> int:
     """Migrate plain-text passwords to bcrypt hashes. Returns count of fixes."""
     fixed = 0
-    conn = get_connection()
     try:
-        cursor = conn.cursor()
-        users = fetch_users(cursor)
-        for user_id, username, stored_hash in users:
+        for user_id, username, stored_hash in fetch_users():
             if is_bcrypt_hash(stored_hash):
                 continue
             if not stored_hash:
@@ -143,16 +131,12 @@ def fix_plaintext_passwords() -> int:
                     username,
                 )
             new_hash = hash_password(stored_hash)
-            update_password(cursor, user_id, new_hash)
+            update_password(user_id, new_hash)
             fixed += 1
 
-        conn.commit()
         return fixed
-    except Exception:
-        conn.rollback()
+    except PyMongoError:
         raise
-    finally:
-        conn.close()
 
 
 def main() -> int:
