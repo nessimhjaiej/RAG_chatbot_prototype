@@ -114,32 +114,41 @@ def _health_check() -> List[str]:
 
 
 def _require_auth() -> bool:
-    """Authenticate user against database and store role in session."""
+    """Authenticate user with button-based login (admin or user)."""
     if st.session_state.get("user"):
         with st.sidebar:
             user = st.session_state["user"]
             st.caption(f"Signed in as: {user['username']} ({user['role']})")
+            
             if st.button("Log out"):
                 for key in ("user", "mode"):
                     st.session_state.pop(key, None)
+                st.rerun()
         return True
 
     st.info("Please sign in to continue.")
-    with st.form("login", clear_on_submit=False):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Sign in")
-        if submitted:
-            try:
-                user = authenticate_user(username.strip(), password)
-                if user:
-                    st.session_state["user"] = user
-                    # Default mode per role
-                    st.session_state["mode"] = "Chat Mode"
-                    return True
-                st.error("Invalid credentials.")
-            except Exception as exc:
-                st.error(f"Authentication error: {exc}")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Login as Admin", type="primary", use_container_width=True):
+            st.session_state["user"] = {
+                "id": 1,
+                "username": "admin",
+                "role": "admin"
+            }
+            st.session_state["mode"] = "AI Chat"
+            st.rerun()
+    
+    with col2:
+        if st.button("Login as User", use_container_width=True):
+            st.session_state["user"] = {
+                "id": 2,
+                "username": "user",
+                "role": "user"
+            }
+            st.session_state["mode"] = "AI Chat"
+            st.rerun()
+    
     return False
 
 
@@ -183,19 +192,17 @@ def main() -> None:
             else:
                 st.success(line)
 
-        # Mode selector for admin users
-        user = st.session_state.get("user")
-        if user and user.get("role") == "admin":
-            st.divider()
-            st.subheader("Admin Controls")
-            st.session_state["mode"] = st.selectbox(
-                "Mode",
-                options=["Chat Mode", "Action Mode"],
-                index=0 if st.session_state.get("mode") != "Action Mode" else 1,
-            )
-
     if not _require_auth():
         return
+
+    # Admin mode selector in main page
+    user = st.session_state.get("user")
+    if user and user.get("role") == "admin":
+        st.session_state["mode"] = st.selectbox(
+            "Select Mode",
+            options=["AI Chat", "AI Agent"],
+            index=0 if st.session_state.get("mode") != "AI Agent" else 1,
+        )
 
     if not os.getenv("GEMINI_API_KEY"):
         st.warning("GEMINI_API_KEY is not set; responses will fail until configured.")
@@ -212,17 +219,17 @@ def main() -> None:
 
         with st.spinner("Retrieving passages and generating answer..."):
             try:
-                # Behavior differs by mode for admin; regular users are always chat mode
-                mode = st.session_state.get("mode", "Chat Mode")
+                # Behavior differs by mode for admin; regular users are always AI chat
+                mode = st.session_state.get("mode", "AI Chat")
                 answer, contexts = rag_chain.answer_question(question, top_k=top_k)
                 if (
-                    mode == "Action Mode"
+                    mode == "AI Agent"
                     and (st.session_state.get("user") or {}).get("role") == "admin"
                 ):
-                    # Placeholder: execute predefined actions/workflows permitted for admin.
-                    # Integrate with your system actions here.
+                    # AI Agent mode: execute advanced workflows and autonomous actions
+                    # Integrate with your AI agent system here.
                     st.info(
-                        "Action Mode: Executed applicable admin workflows (placeholder)."
+                        "🤖 AI Agent Mode: Enhanced processing with autonomous capabilities (placeholder)."
                     )
             except Exception as exc:  # pragma: no cover - UI error surface
                 st.error(f"Failed to generate answer: {exc}")
