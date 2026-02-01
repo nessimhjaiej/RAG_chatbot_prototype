@@ -22,7 +22,7 @@ if str(ROOT) not in sys.path:
 
 from app import rag_chain
 from app.vectorstore import DEFAULT_PERSIST_DIR, DEFAULT_COLLECTION_NAME, get_client
-from app.auth import authenticate_user
+from app.auth import authenticate_user, get_connection
 
 
 # Basic console logging for health checks
@@ -52,6 +52,18 @@ def _health_check() -> List[str]:
     Returns list of human-readable status lines to render in the UI.
     """
     statuses: List[str] = []
+
+    # Check SQL Server connection
+    try:
+        conn = get_connection()
+        conn.close()
+        sql_status = "SQL Server: connected"
+        logging.info(sql_status)
+        statuses.append(sql_status)
+    except Exception as exc:
+        sql_status = f"SQL Server: disconnected ({str(exc)[:50]}...)"
+        logging.error(sql_status)
+        statuses.append(sql_status)
 
     # Check GEMINI API key presence (not network reachability)
     gemini_key_present = bool(os.getenv("GEMINI_API_KEY"))

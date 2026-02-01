@@ -45,7 +45,10 @@ def build_connection_string() -> str:
             f"UID={uid};PWD={pwd};Encrypt={encrypt};TrustServerCertificate={trust_cert};"
         )
 
-    return f"DRIVER={{{driver}}};SERVER={server};DATABASE={database};Trusted_Connection=yes;"
+    return (
+        f"DRIVER={{{driver}}};SERVER={server};DATABASE={database};"
+        f"Trusted_Connection=yes;Encrypt={encrypt};TrustServerCertificate={trust_cert};"
+    )
 
 
 def get_connection() -> pyodbc.Connection:
