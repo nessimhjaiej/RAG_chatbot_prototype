@@ -15,7 +15,8 @@ A modern knowledge assistant for ICC policy documents using Retrieval-Augmented 
 
 - 🔐 User authentication with role-based access (admin/user)
 - 💬 Natural language Q&A about ICC policies
-- 🌍 **Bilingual support** - ask in French or English, AI responds in your language (translates French docs to English when needed)
+- 🌍 **Trilingual support** - ask in French, English, or Arabic - AI responds in your language (translates French docs as needed)
+- 🎯 **Flexible questioning** - Ask specific facts OR general questions (summaries, themes, overviews) about your documents
 - 📚 Retrieved source passages with metadata and similarity scores
 - 🔍 Adjustable retrieval parameters (top-k passages: 1-10)
 - 📊 System health monitoring dashboard
@@ -154,7 +155,7 @@ start-frontend.bat
 ## Usage
 
 1. **Login**: Use your MongoDB credentials to sign in
-2. **Ask Questions**: Enter questions in French or English about ICC policies
+2. **Ask Questions**: Enter questions in French, English, or Arabic about ICC policies
 3. **AI Responses**: Receive detailed explanations in the same language as your question with source citations
 4. **Adjust Parameters**: Use the slider to control number of retrieved passages (1-10)
 5. **Review Sources**: Expand source passages to see metadata and similarity scores
@@ -174,12 +175,18 @@ The system is configured for optimal performance:
 ### Response Quality
 
 The AI is configured to provide:
-- Detailed explanations with relevant context
+- **Document-prioritized responses**: Answers prioritize retrieved document content while allowing synthesis and general reasoning
+- **Flexible questioning**: Supports both specific factual queries and general questions (summaries, themes, overviews)
+- **Information synthesis**: Can combine information across multiple passages for comprehensive answers
+- **Clear sourcing**: Distinguishes between document content (with citations) and general contextual knowledge
+- **Smart multilingual retrieval**: Questions in English/Arabic are auto-translated to French for better document matching, then answers are provided in your language
+- Detailed explanations with relevant context from source material
 - Clear breakdowns of complex topics
 - Source citations using bracketed numbers [1], [2], etc.
-- **Automatic language matching**: Detects if your question is in French or English and responds in the same language
-- **Cross-language translation**: Source documents are in French, but the AI translates to English when you ask in English
-- Maintains proper grammar and clarity in both languages
+- **Automatic language matching**: Detects if your question is in French, English, or Arabic and responds in the same language
+- **Cross-language translation**: Seamlessly translates between French documents and English/Arabic responses
+- Maintains proper grammar and clarity in all three languages
+- Supports right-to-left formatting for Arabic responses
 
 ## API Endpoints
 
@@ -262,11 +269,17 @@ The FastAPI backend can be deployed using:
 
 ## Recent Improvements
 
-### v1.2 - Multilingual Support
+### v1.2 - Multilingual Support & Enhanced Capabilities
 - ✅ **Automatic language detection** - AI detects question language and responds accordingly
-- ✅ **Cross-language translation** - Translates French documents to English when questions are in English
-- ✅ Seamless bilingual experience (French ↔ English) without manual language selection
-- ✅ Maintains quality and detail in both supported languages
+- ✅ **Trilingual support** - French, English, and Arabic
+- ✅ **Smart cross-language retrieval** - Questions in English/Arabic are auto-translated to French for better document matching
+- ✅ **Cross-language translation** - Translates French documents to English or Arabic in responses
+- ✅ **Flexible questioning** - Supports both specific factual queries and general questions (summaries, themes, overviews)
+- ✅ **Document-prioritized responses** - Emphasizes document content while allowing synthesis and contextual reasoning
+- ✅ **Clear source attribution** - Always cites document sources and distinguishes from general knowledge
+- ✅ Seamless multilingual experience without manual language selection
+- ✅ Maintains quality and detail in all supported languages
+- ✅ Right-to-left text formatting support for Arabic
 
 ### v1.1 - Performance & Quality Enhancements
 - ✅ Increased frontend timeout to 90 seconds for AI generation

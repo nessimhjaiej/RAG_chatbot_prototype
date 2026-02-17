@@ -68,6 +68,7 @@ def _health_check() -> List[str]:
     ollama_available = False
     try:
         import ollama
+
         # Try to list models to verify Ollama is running
         ollama.list()
         ollama_status = "Ollama: running"
@@ -116,9 +117,7 @@ def _health_check() -> List[str]:
                 statuses.append(
                     f"Collection '{DEFAULT_COLLECTION_NAME}': skipped (Ollama unavailable)"
                 )
-                logging.info(
-                    "Collection check skipped because Ollama is unavailable"
-                )
+                logging.info("Collection check skipped because Ollama is unavailable")
         except Exception as exc:
             err = f"Chroma collection error: {exc}"
             logging.error(err)
@@ -219,9 +218,12 @@ def main() -> None:
     # Check if Ollama is running
     try:
         import ollama
+
         ollama.list()
     except Exception:
-        st.warning("Ollama is not running; responses will fail until Ollama is started.")
+        st.warning(
+            "Ollama is not running; responses will fail until Ollama is started."
+        )
 
     question = st.text_area(
         "Your question", height=120, placeholder="What are the ICC membership criteria?"
