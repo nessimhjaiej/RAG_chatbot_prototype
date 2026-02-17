@@ -64,13 +64,20 @@ def _health_check() -> List[str]:
         logging.error(mongo_status)
         statuses.append(mongo_status)
 
-    # Check GEMINI API key presence (not network reachability)
-    gemini_key_present = bool(os.getenv("GEMINI_API_KEY"))
-    gemini_status = (
-        "Gemini API key: present" if gemini_key_present else "Gemini API key: MISSING"
-    )
-    logging.info(gemini_status)
-    statuses.append(gemini_status)
+    # Check Ollama availability
+    ollama_available = False
+    try:
+        import ollama
+        # Try to list models to verify Ollama is running
+        ollama.list()
+        ollama_status = "Ollama: running"
+        logging.info(ollama_status)
+        statuses.append(ollama_status)
+        ollama_available = True
+    except Exception as exc:
+        ollama_status = f"Ollama: unavailable ({str(exc)[:50]}...)"
+        logging.error(ollama_status)
+        statuses.append(ollama_status)
 
     # Check Chroma persistence directory and sqlite file existence
     persist_path = Path(DEFAULT_PERSIST_DIR)
@@ -96,7 +103,7 @@ def _health_check() -> List[str]:
             # Retrieve collection without forcing a query; embedding fn is set in vectorstore
             from app.vectorstore import get_collection  # local import to avoid cycles
 
-            if gemini_key_present:
+            if ollama_available:
                 collection = get_collection(client, name=DEFAULT_COLLECTION_NAME)
                 count = _collection_count_safe(collection)
                 count_txt = f"{count}" if count is not None else "unknown"
@@ -107,10 +114,10 @@ def _health_check() -> List[str]:
                 statuses.append(col_status)
             else:
                 statuses.append(
-                    f"Collection '{DEFAULT_COLLECTION_NAME}': skipped (embedding key missing)"
+                    f"Collection '{DEFAULT_COLLECTION_NAME}': skipped (Ollama unavailable)"
                 )
                 logging.info(
-                    "Collection check skipped because GEMINI_API_KEY is missing"
+                    "Collection check skipped because Ollama is unavailable"
                 )
         except Exception as exc:
             err = f"Chroma collection error: {exc}"
@@ -209,8 +216,12 @@ def main() -> None:
             index=0 if st.session_state.get("mode") != "AI Agent" else 1,
         )
 
-    if not os.getenv("GEMINI_API_KEY"):
-        st.warning("GEMINI_API_KEY is not set; responses will fail until configured.")
+    # Check if Ollama is running
+    try:
+        import ollama
+        ollama.list()
+    except Exception:
+        st.warning("Ollama is not running; responses will fail until Ollama is started.")
 
     question = st.text_area(
         "Your question", height=120, placeholder="What are the ICC membership criteria?"

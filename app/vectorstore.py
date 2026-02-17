@@ -1,7 +1,7 @@
 """
 Chroma persistence utilities for the ICC knowledge base.
 
-This module creates and loads a persistent Chroma client, wires in the Gemini
+This module creates and loads a persistent Chroma client, wires in the Ollama
 embedding function, and provides small helpers to add/query documents.
 """
 
@@ -14,7 +14,7 @@ import chromadb
 from chromadb.api import ClientAPI
 from chromadb.api.models import Collection
 
-from app.embeddings import GeminiEmbeddingFunction
+from app.embeddings import OllamaEmbeddingFunction
 
 DEFAULT_PERSIST_DIR = Path("chromadb")
 DEFAULT_COLLECTION_NAME = "icc-policies"
@@ -37,20 +37,28 @@ def get_collection(
     metadata: Mapping[str, str] | None = None,
 ) -> Collection.Collection:
     """
-    Return a Chroma collection configured for Gemini embeddings.
+    Return a Chroma collection. Uses existing collection if available,
+    or creates new one with Ollama embeddings.
 
-    Embedding function defaults to GeminiEmbeddingFunction() when not provided.
+    For existing collections, preserves the original embedding function.
+    Embedding function parameter only used when creating new collections.
     """
-    embedding_fn = embedding_function or GeminiEmbeddingFunction()
-    collection_metadata = {"hnsw:space": "cosine"}
-    if metadata:
-        collection_metadata.update(metadata)
+    # Try to get existing collection first without forcing embedding function
+    try:
+        collection = client.get_collection(name=name)
+        return collection
+    except Exception:
+        # Collection doesn't exist, create with Ollama embeddings
+        embedding_fn = embedding_function or OllamaEmbeddingFunction()
+        collection_metadata = {"hnsw:space": "cosine"}
+        if metadata:
+            collection_metadata.update(metadata)
 
-    return client.get_or_create_collection(
-        name=name,
-        embedding_function=embedding_fn,
-        metadata=collection_metadata,
-    )
+        return client.create_collection(
+            name=name,
+            embedding_function=embedding_fn,
+            metadata=collection_metadata,
+        )
 
 
 def add_documents(

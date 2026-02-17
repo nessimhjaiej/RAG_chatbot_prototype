@@ -30,7 +30,7 @@ from app.vectorstore import (
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Ingest ICC text into Chroma with Gemini embeddings."
+        description="Ingest ICC text into Chroma with Ollama embeddings."
     )
     parser.add_argument(
         "--input",

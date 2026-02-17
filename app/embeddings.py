@@ -1,14 +1,14 @@
 """
-Convert text chunks into Gemini embeddings ready for Chroma.
+Convert text chunks into Ollama embeddings ready for Chroma.
 
 Usage example with Chroma:
     from chromadb import Client
-    from app.embeddings import GeminiEmbeddingFunction
+    from app.embeddings import OllamaEmbeddingFunction
 
     client = Client()
     collection = client.get_or_create_collection(
         "icc-policies",
-        embedding_function=GeminiEmbeddingFunction(),
+        embedding_function=OllamaEmbeddingFunction(),
     )
     collection.add(ids=["1"], documents=["some chunk"])
 """
@@ -18,66 +18,54 @@ from __future__ import annotations
 import os
 from typing import List, Sequence
 
-from google import genai
-from chromadb.utils.embedding_functions import EmbeddingFunction
+import ollama
+from chromadb.api.types import EmbeddingFunction
 from dotenv import load_dotenv
 
-# Load .env early so GEMINI_API_KEY is available when resolving the key.
+# Load .env early so environment variables are available.
 load_dotenv()
 
-DEFAULT_MODEL = "gemini-embedding-001"
-
-_client: genai.Client | None = None
+DEFAULT_MODEL = "qwen2.5:7b"
 
 
-def _resolve_api_key(explicit_key: str | None = None) -> str:
-    """Return a Gemini API key or fail fast with a helpful message."""
-    api_key = explicit_key or os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "Gemini API key not found. Set GEMINI_API_KEY in your environment."
-        )
-    return api_key
-
-
-def _get_client(api_key: str | None = None) -> genai.Client:
-    """Return a singleton google.genai Client."""
-    global _client
-    if _client is None:
-        _client = genai.Client(api_key=_resolve_api_key(api_key))
-    return _client
+def _get_ollama_model() -> str:
+    """Return the Ollama model name from environment or default."""
+    return (
+        os.getenv("OLLAMA_EMBEDDING_MODEL")
+        or os.getenv("OLLAMA_MODEL")
+        or DEFAULT_MODEL
+    )
 
 
 def embed_chunks(
     chunks: Sequence[str],
     *,
-    api_key: str | None = None,
-    model: str = DEFAULT_MODEL,
+    model: str | None = None,
 ) -> List[List[float]]:
     """
-    Convert a list of text chunks into embedding vectors using Gemini.
+    Convert a list of text chunks into embedding vectors using Ollama.
 
     The vectors can be stored in Chroma collections for similarity search.
     """
     if not chunks:
         return []
 
-    client = _get_client(api_key)
+    model_name = model or _get_ollama_model()
     vectors: List[List[float]] = []
 
     for chunk in chunks:
-        response = client.models.embed_content(
-            model=model,
-            contents=chunk,
+        response = ollama.embeddings(
+            model=model_name,
+            prompt=chunk,
         )
-        vectors.append(response.embeddings[0].values)
+        vectors.append(response["embedding"])
 
     return vectors
 
 
-class GeminiEmbeddingFunction(EmbeddingFunction):
+class OllamaEmbeddingFunction(EmbeddingFunction):
     """
-    Chroma embedding function backed by google.genai embed_content.
+    Chroma embedding function backed by Ollama.
 
     Pass an instance of this class to Chroma's collection factory methods.
     """
@@ -85,16 +73,12 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
     def __init__(
         self,
         *,
-        api_key: str | None = None,
-        model: str = DEFAULT_MODEL,
+        model: str | None = None,
     ) -> None:
-        self.api_key = api_key
-        self.model = model
-        _get_client(api_key)
+        self.model = model or _get_ollama_model()
 
     def __call__(self, texts: Sequence[str]) -> List[List[float]]:
         return embed_chunks(
             texts,
-            api_key=self.api_key,
             model=self.model,
         )
