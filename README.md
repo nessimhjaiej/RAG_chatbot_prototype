@@ -14,7 +14,8 @@ A modern knowledge assistant for ICC policy documents using Retrieval-Augmented 
 ## Features
 
 - 🔐 User authentication with role-based access (admin/user)
-- 💬 Natural language Q&A about ICC policies (answers in French)
+- 💬 Natural language Q&A about ICC policies
+- 🌍 **Bilingual support** - ask in French or English, AI responds in your language (translates French docs to English when needed)
 - 📚 Retrieved source passages with metadata and similarity scores
 - 🔍 Adjustable retrieval parameters (top-k passages: 1-10)
 - 📊 System health monitoring dashboard
@@ -153,8 +154,8 @@ start-frontend.bat
 ## Usage
 
 1. **Login**: Use your MongoDB credentials to sign in
-2. **Ask Questions**: Enter questions about ICC policies in the chat interface
-3. **AI Responses**: Receive detailed explanations in French with source citations
+2. **Ask Questions**: Enter questions in French or English about ICC policies
+3. **AI Responses**: Receive detailed explanations in the same language as your question with source citations
 4. **Adjust Parameters**: Use the slider to control number of retrieved passages (1-10)
 5. **Review Sources**: Expand source passages to see metadata and similarity scores
 6. **Admin Mode** (admin users only): Toggle between AI Chat and AI Agent modes
@@ -176,7 +177,9 @@ The AI is configured to provide:
 - Detailed explanations with relevant context
 - Clear breakdowns of complex topics
 - Source citations using bracketed numbers [1], [2], etc.
-- French language responses with proper grammar
+- **Automatic language matching**: Detects if your question is in French or English and responds in the same language
+- **Cross-language translation**: Source documents are in French, but the AI translates to English when you ask in English
+- Maintains proper grammar and clarity in both languages
 
 ## API Endpoints
 
@@ -258,6 +261,12 @@ The FastAPI backend can be deployed using:
 - **Environment**: Use environment variables for all secrets
 
 ## Recent Improvements
+
+### v1.2 - Multilingual Support
+- ✅ **Automatic language detection** - AI detects question language and responds accordingly
+- ✅ **Cross-language translation** - Translates French documents to English when questions are in English
+- ✅ Seamless bilingual experience (French ↔ English) without manual language selection
+- ✅ Maintains quality and detail in both supported languages
 
 ### v1.1 - Performance & Quality Enhancements
 - ✅ Increased frontend timeout to 90 seconds for AI generation
