@@ -58,4 +58,11 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(
+        "backend.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        timeout_keep_alive=120,  # Keep connection alive for 2 min
+        timeout_graceful_shutdown=30,  # Graceful shutdown timeout
+    )
